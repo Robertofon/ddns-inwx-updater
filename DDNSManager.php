@@ -11,7 +11,7 @@
 // Load some classes
 require_once 'inwx/domrobot.class.php';
 require_once 'log/KLogger.php';
-require_once 'Helper.php';
+
 
 /**
  * Update dynamic ip adress
@@ -25,7 +25,7 @@ class DDNSManager
 	 * Configuration file
 	 * @var string
 	 */
-	protected $iniFile = ".config.ini";
+	protected $iniFile = "conf/.config.ini";
 
 	/**
 	 * Configuration key
@@ -74,18 +74,6 @@ class DDNSManager
 	 * @var KLogger-Object
 	 */
 	protected $logger;
-
-	/**
-	 * Old ip
-	 * @var string
-	 */
-	protected $oldIP = "";
-
-	/**
-	 * New ip
-	 * @var string
-	 */
-	protected $newIP = "";
 
 	/**
 	 * Initialize object
@@ -141,12 +129,12 @@ class DDNSManager
 	 * @param type $ip
 	 * @return string
 	 */
-	public function updateIP($ip)
+	public function updateIP($ip, $ip6)
 	{
 		// Check for empty ip string
 		if ($ip !== "")
 		{
-			$this->newIP = $ip;
+			// err?
 		}
 		else
 		{
@@ -171,51 +159,14 @@ class DDNSManager
 		// After successfully authentificated start update
 		if ($response['code'] == 1000)
 		{
-			// Get subdomain, recordID and current ip
-			$object = "nameserver";
-			$method = "info";
-			$params = array();
-			$params['domain'] = $this->inwxDomain;
-			$params['name'] = $this->inwxSubdomain;
-			$response = $domrobot->call($object, $method, $params);
-
-			if ($response['code'] == 1000)
+			$ip4success = $this->updateRecord($domrobot, "A", $ip);
+			$this->logger->LogInfo("IPv4 success: ".$ip4success);
+			if($ip6 !== "")
 			{
-				// Get the recordID
-				// ID is important for the update
-				$recordID = $response["resData"]["record"][0]["id"];
-
-				// Get old IP
-				$this->oldIP = $response["resData"]["record"][0]["content"];
-
-				// Update-Call
-				$object = "nameserver";
-				$method = "updateRecord";
-				$params = array();
-				$params['id'] = $recordID;
-				$params['content'] = $this->newIP;
-				$response = $domrobot->call($object, $method, $params);
-
-				// After successfully IP update well done
-				if ($response['code'] == 1000)
-				{
-					// Write some information in logfile
-					$this->logger->LogInfo("IP update successfully! | Old IP: " . $this->oldIP . " | New IP: " . $this->newIP);
-					return true;
-				}
-				else
-				{
-					// Cant update IP
-					$this->logger->LogError("IP update error: " . $this->newIP);
-					return false;
-				}
+				$ip6success = $this->updateRecord($domrobot, "AAAA", $ip6);
+				$this->logger->LogInfo("IPv6 success: ".$ip6success);
 			}
-			else
-			{
-				// INWX login error
-				$this->logger->LogError("Cant login: " . $response);
-				return false;
-			}
+			//if(!$ip4success  $ip6success)
 		}
 		else if ($response['code'] == 2200)
 		{
@@ -224,6 +175,57 @@ class DDNSManager
 		}
 	}
 
+	protected function updateRecord($domrobot, $type, $newIP)
+	{
+		// Get subdomain, recordID and current ip
+		$object = "nameserver";
+		$method = "info";
+		$params = array();
+		$params['domain'] = $this->inwxDomain;
+		$params['type'] = $type;
+		$params['name'] = $this->inwxSubdomain;
+		$response = $domrobot->call($object, $method, $params);
+
+		if ($response['code'] == 1000)
+		{
+			// Get the recordID
+			// ID is important for the update
+			$recordID = $response["resData"]["record"][0]["id"];
+
+			// Get old IP
+			$oldIP = $response["resData"]["record"][0]["content"];
+
+			// Update-Call
+			$object = "nameserver";
+			$method = "updateRecord";
+			$params = array();
+			$params['id'] = $recordID;
+			$params['content'] = $newIP;
+			$response = $domrobot->call($object, $method, $params);
+
+			// After successfully IP update well done
+			if ($response['code'] == 1000)
+			{
+				// Write some information in logfile
+				$this->logger->LogInfo("IP update successfully! | Old IP: " . $oldIP . " | New IP: " . $newIP);
+				return true;
+			}
+			else
+			{
+				// Cant update IP
+				$this->logger->LogError("IP update error: " . $newIP);
+				return false;
+			}
+			
+		}
+		else
+		{
+			// INWX login error
+			$this->logger->LogError("Cant login: " . $response);
+			return false;
+		}
+	}
+	
 	/**
 	 * Check correct access key
 	 * @return boolean access allow
@@ -253,7 +255,7 @@ class DDNSManager
 		// Escape string 
 		if (isset($entry) && !empty($entry))
 		{
-			return Helper::htmlencode($entry);
+			return ($entry);
 		}
 		else
 		{
